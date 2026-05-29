@@ -1,0 +1,112 @@
+schema_version: "1"
+
+# ===========================================================================
+# Odoo Accounting Agent — extracted from middleware kernel in Phase 5B M3+M4
+# catch-up. The sub-agent class + DomainTool wrapping that used to live in
+# middleware/src/index.ts are now plugin-internal in src/plugin.ts.
+# ===========================================================================
+
+identity:
+  id: "@omadia/agent-odoo-accounting"
+  kind: "agent"
+  domain: "odoo.accounting"
+  name: "Odoo Accounting Assistant"
+  version: "0.1.1"
+  description: "Read-only Accounting-Agent: Rechnungen (in/out), Zahlungen, offene Posten, Journale, Kontenplan."
+  authors:
+    - name: "byte5 GmbH"
+      email: "dev@byte5.de"
+  license: "Proprietary"
+  categories:
+    - "finance"
+    - "productivity"
+
+compat:
+  core: ">=1.0 <2.0"
+  node: ">=20"
+
+# Consumes services published by @omadia/integration-odoo (odoo.executeTool.accounting)
+# and the in-tree knowledgeGraph capability. Resolution is via ctx.services.get
+# inside activate() — declared here so the dependency gate guarantees the
+# integration is active before this agent.
+depends_on:
+  - "@omadia/integration-odoo"
+
+requires:
+  - "knowledgeGraph@1"
+
+lifecycle:
+  entry: "dist/plugin.js"
+  hooks:
+    onInstall: false
+    onConfigure: true
+    onActivate: true
+    onDeactivate: true
+    onUninstall: true
+  uninstall_policy:
+    entities: "quarantine"
+    memory: "delete"
+    secrets: "delete"
+
+setup:
+  fields: []
+  self_test: true
+
+llm:
+  prefers:
+    - capabilities: ["tool_use", "long_context"]
+      min_context: 200000
+      class: "frontier"
+      temperature_hint: 0.2
+  fallback_allowed: true
+
+playbook:
+  when_to_use: |
+    Nutze diesen Agent für Finanzbuchhaltung auf der Ziel-Odoo: Kundenrechnungen
+    (out_invoice), Lieferantenrechnungen (in_invoice), Zahlungen, offene Posten,
+    Fälligkeiten, Umsätze, Salden, Journale, Kontenplan.
+  combines_with:
+    - agent: "@omadia/agent-odoo-hr"
+      why: "Bei Personalkosten-Fragen: Accounting hat die Zahlen, HR die Zuordnung zu Mitarbeiter/Abteilung."
+  not_for:
+    - "HR-Themen (Mitarbeiter, Urlaub, Verträge)"
+    - "Schreibende Operationen — Agent ist strikt read-only"
+  example_prompts:
+    - "Welche Rechnungen sind aktuell überfällig?"
+    - "Zeig mir alle Lieferantenrechnungen von ACME GmbH in Q1."
+    - "Wie hoch ist unser Umsatz im März?"
+
+permissions:
+  memory:
+    reads: ["session:*", "agent:@omadia/agent-odoo-accounting:*"]
+    writes: ["agent:@omadia/agent-odoo-accounting:*"]
+  graph:
+    reads: ["Invoice", "Vendor"]
+    writes: []
+  network:
+    outbound: []
+  filesystem:
+    scratch: false
+
+integrations: []
+
+# Two prompt-partials — `runtime-note` describes the in-process tool surface
+# (overrides the legacy HTTP/curl/bash flow described in the playbook); the
+# `playbook` was the original Anthropic-Skill body. Loaded by the kernel's
+# loadSystemPrompt() helper in dynamic-runtime activation order.
+skills:
+  - id: "runtime-note"
+    kind: "prompt_partial"
+    path: "skills/runtime-note.md"
+    description: "Beschreibt die in-process Laufzeit (query_graph + odoo_execute) — überschreibt die HTTP/curl-Anweisungen im playbook."
+    shareable: false
+  - id: "playbook"
+    kind: "prompt_partial"
+    path: "skills/playbook.md"
+    description: "Vollständiges Accounting-Playbook (Modelle, Methoden, Hard-Read-Only-Regeln, Beispielqueries)."
+    shareable: false
+
+ui:
+  settings_schema: null
+  commands: []
+  dashboard_cards: []

@@ -1,0 +1,32 @@
+{
+  "name": "@omadia/agent-odoo-accounting",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "manifest.yaml"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@omadia/plugin-api": "*",
+    "@omadia/orchestrator": "*",
+    "@omadia/verifier": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
