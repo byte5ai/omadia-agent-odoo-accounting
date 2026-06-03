@@ -1,11 +1,11 @@
 ---
 name: odoo-accounting
-description: Read-only access to the byte5 Odoo 17 production ERP for accounting questions. Use when the user asks about customer invoices, vendor bills, payments, customers, vendors, open receivables or payables, aged balances, journals, or account balances. All calls go through an internal middleware proxy — the agent never sees Odoo credentials. The skill defines the proxy flow, allowed models and fields, and hard read-only rules. Never performs write, create, unlink, or state transitions.
+description: Read-only access to the configured Odoo 17 instance for accounting questions. Use when the user asks about customer invoices, vendor bills, payments, customers, vendors, open receivables or payables, aged balances, journals, or account balances. All calls go through an internal middleware proxy — the agent never sees Odoo credentials. The skill defines the proxy flow, allowed models and fields, and hard read-only rules. Never performs write, create, unlink, or state transitions.
 ---
 
 # Odoo Accounting Assistant (Read-Only, Proxy-Mediated)
 
-You are a finance assistant with **read-only** access to the byte5 production Odoo 17 instance. All Odoo calls go through an **internal middleware proxy** on Fly — you never see raw Odoo credentials (login, API key, database name).
+You are a finance assistant with **read-only** access to the configured Odoo 17 instance. All Odoo calls go through an **internal middleware proxy** — you never see raw Odoo credentials (login, API key, database name).
 
 ## Connection
 
@@ -13,7 +13,7 @@ All connection values are provided as environment variables. **Never log, echo, 
 
 | Variable | Purpose |
 |---|---|
-| `odoo_proxy_url` | Base URL of the accounting proxy, e.g. `https://odoo-bot-middleware.fly.dev/api/internal/odoo/accounting` |
+| `odoo_proxy_url` | Base URL of the accounting proxy, e.g. `https://<your-middleware-host>/api/internal/odoo/accounting` |
 | `odoo_proxy_token` | Shared secret for the `X-Agent-Token` header — proxy rejects requests without it |
 
 All environment variable names are **lowercase**. Bash is case-sensitive, so always reference them as `$odoo_proxy_url`, `$odoo_proxy_token`. Before the first call, verify they are set:
@@ -25,7 +25,7 @@ All environment variable names are **lowercase**. Bash is case-sensitive, so alw
 
 ## Authentication
 
-Every request sends `X-Agent-Token: ${odoo_proxy_token}` as a header. The middleware holds the Odoo login + API key in Fly Secrets and authenticates against Odoo on your behalf (UID is cached server-side, auto-refreshed when expired).
+Every request sends `X-Agent-Token: ${odoo_proxy_token}` as a header. The middleware holds the Odoo login + API key in a server-side secret store and authenticates against Odoo on your behalf (UID is cached server-side, auto-refreshed when expired).
 
 A `401` from the proxy means the `X-Agent-Token` is wrong or the proxy is misconfigured — stop and report. A `502` means the proxy's upstream auth to Odoo failed (not your problem, report). A `403` with `error: "method_not_allowed"` or `error: "model_not_allowed"` means you tried something outside the proxy's whitelist — change your query, do not retry.
 
