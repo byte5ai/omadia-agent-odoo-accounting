@@ -27,7 +27,18 @@
     "@omadia/orchestrator": "*",
     "@omadia/verifier": "*"
   },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "@types/node": "^25.6.0",
+    "@omadia/verifier": "file:../odoo-bot/middleware/packages/harness-verifier"
+  },
   "engines": {
     "node": ">=20"
+  },
+  "description": "Read-only Odoo Accounting sub-agent for omadia — invoices (in/out), payments, open items, journals, chart of accounts.",
+  "homepage": "https://github.com/byte5ai/omadia-agent-odoo-accounting",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byte5ai/omadia-agent-odoo-accounting.git"
   }
 }
