@@ -1,35 +1,28 @@
 /**
- * Odoo Accounting Sub-Agent — extracted from middleware kernel in Phase 5B
- * M3+M4 catch-up.
+ * Odoo Accounting Sub-Agent — thin consumer.
  *
- * Before: index.ts inline-built a LocalSubAgent with the accounting skill +
- * a custom systemPrompt header explaining the in-process tool surface, then
- * wrapped it in a `query_odoo_accounting` DomainTool. Both depended on
- * kernel-internal helpers (`buildSubAgentSystemPrompt`, `loadSkill`,
- * direct `KnowledgeGraph` access).
+ * Phase 6: the LocalSubAgent toolkit (`query_graph` + `odoo_execute`) is now
+ * assembled once in @omadia/integration-odoo and published as the
+ * `odoo.agentToolkit.accounting` service. This plugin just consumes it — the
+ * previous graph-lookup wiring (and the @omadia/verifier dependency it needed)
+ * moved into the integration, collapsing the boilerplate that this package and
+ * @omadia/agent-odoo-hr used to duplicate.
  *
- * After: this plugin exports `activate(ctx)` returning a toolkit. The
- * dynamic-runtime takes care of LocalSubAgent + DomainTool wrapping; the
- * runtime systemPrompt comes from the manifest's `skills` (loadSystemPrompt
- * concatenates `runtime-note.md` + `playbook.md` for us).
+ * The runtime systemPrompt still comes from this package's manifest `skills`
+ * (loadSystemPrompt concatenates `runtime-note.md` + `playbook.md`); the
+ * dynamic-runtime wraps the returned toolkit into a LocalSubAgent + DomainTool.
  *
- * Service consumption:
- *   `odoo.executeTool.accounting` — published by @omadia/integration-odoo
- *   `knowledgeGraph`              — published by @omadia/knowledge-graph-*
+ * Requires @omadia/integration-odoo >= 0.2.0 (publishes odoo.agentToolkit.*).
  */
 
 import type { PluginContext } from '@omadia/plugin-api';
 import type { LocalSubAgentTool } from '@omadia/plugin-api';
-import { createGraphLookupTool } from '@omadia/verifier';
 
-const EXECUTE_TOOL_SERVICE = 'odoo.executeTool.accounting';
-const KNOWLEDGE_GRAPH_SERVICE = 'knowledgeGraph';
+const AGENT_TOOLKIT_SERVICE = 'odoo.agentToolkit.accounting';
 
-interface MinimalKnowledgeGraph {
-  // Structural shim — the verifier's createGraphLookupTool only needs
-  // a knowledge-graph instance handed back; we don't call methods on it
-  // here. Typed as `unknown` to avoid a hard import on the KG package.
-  readonly [k: string]: unknown;
+/** Structural shim for the service value published by integration-odoo. */
+interface OdooAgentToolkit {
+  readonly tools: LocalSubAgentTool[];
 }
 
 export interface AccountingHandle {
@@ -40,34 +33,21 @@ export interface AccountingHandle {
 export async function activate(ctx: PluginContext): Promise<AccountingHandle> {
   ctx.log('activating odoo-accounting agent');
 
-  const executeTool = ctx.services.get<LocalSubAgentTool>(EXECUTE_TOOL_SERVICE);
-  if (!executeTool) {
+  const toolkit = ctx.services.get<OdooAgentToolkit>(AGENT_TOOLKIT_SERVICE);
+  if (!toolkit) {
     throw new Error(
-      `agent-odoo-accounting: required service '${EXECUTE_TOOL_SERVICE}' not published — @omadia/integration-odoo must be active before this agent (declared in depends_on).`,
+      `agent-odoo-accounting: required service '${AGENT_TOOLKIT_SERVICE}' not published — @omadia/integration-odoo (>= 0.2.0) must be active before this agent (declared in depends_on).`,
     );
   }
-
-  const graph = ctx.services.get<MinimalKnowledgeGraph>(KNOWLEDGE_GRAPH_SERVICE);
-  if (!graph) {
-    throw new Error(
-      `agent-odoo-accounting: required service '${KNOWLEDGE_GRAPH_SERVICE}' not published — declared in requires.knowledgeGraph@1.`,
-    );
-  }
-
-  // The KnowledgeGraph type lives in the orchestrator-internal package
-  // tree; consuming it nominally would force a hard import. Cast through
-  // `unknown` — the createGraphLookupTool factory only forwards the
-  // instance and never reaches into class-internal members.
-  const graphLookup = createGraphLookupTool('accounting', {
-    graph: graph as unknown as Parameters<typeof createGraphLookupTool>[1]['graph'],
-  });
 
   ctx.log(
-    `odoo-accounting ready (tools=2: ${graphLookup.spec.name}, ${executeTool.spec.name})`,
+    `odoo-accounting ready (tools=${String(toolkit.tools.length)}: ${toolkit.tools
+      .map((t) => t.spec.name)
+      .join(', ')})`,
   );
 
   return {
-    toolkit: { tools: [graphLookup, executeTool] },
+    toolkit: { tools: toolkit.tools },
     async close() {
       ctx.log('deactivating odoo-accounting agent');
     },

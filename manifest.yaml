@@ -11,7 +11,7 @@ identity:
   kind: "agent"
   domain: "odoo.accounting"
   name: "Odoo Accounting Assistant"
-  version: "0.1.2"
+  version: "0.1.3"
   description: "Read-only Accounting-Agent: Rechnungen (in/out), Zahlungen, offene Posten, Journale, Kontenplan."
   authors:
     - name: "byte5 GmbH"
