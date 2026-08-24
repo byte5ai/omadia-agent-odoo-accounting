@@ -11,7 +11,7 @@ identity:
   kind: "agent"
   domain: "odoo.accounting"
   name: "Odoo Accounting Assistant"
-  version: "0.1.3"
+  version: "0.1.4"
   description: "Read-only Accounting-Agent: Rechnungen (in/out), Zahlungen, offene Posten, Journale, Kontenplan."
   authors:
     - name: "byte5 GmbH"
@@ -34,6 +34,15 @@ depends_on:
 
 requires:
   - "knowledgeGraph@1"
+  # omadia#839 — resolved via `ctx.services.get('odoo.agentToolkit.accounting')`
+  # in activate() with an unconditional throw when absent, so the agent cannot
+  # activate without it. `@omadia/integration-odoo` (>=0.2.1) declares it under
+  # `provides:` and publishes it via `ctx.services.provide`, so this `requires:`
+  # edge resolves and orders the integration first (also named in `depends_on`).
+  # This agent consumes ONLY the toolkit — not `odoo.client` — so its row has a
+  # single name. Retires the `@omadia/agent-odoo-accounting` row in
+  # `STANDALONE_LEGACY_SERVICE_GRANTS_2026_08_20`.
+  - "odoo.agentToolkit.accounting@^1"
 
 lifecycle:
   entry: "dist/plugin.js"
