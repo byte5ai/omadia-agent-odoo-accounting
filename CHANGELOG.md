@@ -22,7 +22,7 @@
   allows search, search_read, read, search_count, read_group, fields_get).
 - Removed `llm:` preferences and `permissions.memory`. `description` is
   `en`/`de`. The ZIP no longer carries `skills/`.
-- `compat.core` is `>=1.77.0 <2.0` (kind `tool`, `agent_templates`).
+- `compat.core` is `>=1.78.0 <2.0` (kind `tool`, `agent_templates`).
 - Tests: `npm test` (`test/capabilityPlugin.test.ts`), new in this repo.
 - No model access and no network of its own: the plugin makes no `fetch` and
   uses no SDK; all Odoo traffic runs in the integration.
