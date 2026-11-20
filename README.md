@@ -2,9 +2,9 @@
 
 # @omadia/agent-odoo-accounting
 
-### Read-only Odoo Accounting sub-agent for omadia — invoices, payments, open items, journals, chart of accounts.
+### Read-only Odoo Accounting tools for omadia — invoices, payments, open items, journals, chart of accounts.
 
-An **Odoo Accounting** agent plugin for [omadia](https://github.com/byte5ai/omadia),
+An **Odoo Accounting** capability plugin (kind `tool`) for [omadia](https://github.com/byte5ai/omadia),
 built on [`@omadia/integration-odoo`](https://github.com/byte5ai/omadia-integration-odoo).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
@@ -16,11 +16,28 @@ built on [`@omadia/integration-odoo`](https://github.com/byte5ai/omadia-integrat
 
 ## How it works
 
-A sub-agent playbook (`skills/playbook.md` + `skills/runtime-note.md`) plus a
-thin plugin entry point (`src/plugin.ts`) that wraps the shared Odoo
-integration's read-only accounting surface — invoices (in/out), payments,
-open items, journals, chart of accounts — and a graph-lookup tool from
-[`@omadia/verifier`](https://github.com/byte5ai) for cross-checking.
+A capability plugin of kind `tool` (spec 2042 §5.10): it owns no credentials
+and no persona. `src/plugin.ts` takes the scope-locked accounting toolkit that
+`@omadia/integration-odoo` publishes as the `odoo.agentToolkit.accounting`
+service and registers each tool with `ctx.tools.register`
+(`src/registerTools.ts`); the kernel offers them to the agents the operator
+granted this plugin to. The knowledge that used to be the playbook skill
+(allowed models and fields, query recipes, analytic distribution, answer
+rules) now sits in the tool descriptions (`src/toolDocs.ts`) and in
+`playbook.when_to_use`. The former persona ships as two inactive agent
+templates (English and German) in `manifest.yaml`; an operator turns one into
+an agent in the Agent Builder.
+
+Tools (both `side_effects: read`):
+
+| Tool | Was | Does |
+|------|-----|------|
+| `odoo_accounting_query_graph` | `query_graph` | pre-synced partners, journals, accounts, currencies, departments |
+| `odoo_accounting_execute` | `odoo_execute` | read-only `execute_kw` in the accounting scope |
+
+The old names were private to the sub-agent. As native tools they are
+instance-wide and the HR plugin has the same two, so each scope has its own
+prefix. Needs omadia core >= 1.78.0 (kind `tool`, `agent_templates`).
 
 ## Build, typecheck
 
@@ -28,6 +45,8 @@ open items, journals, chart of accounts — and a graph-lookup tool from
 npm install
 npm run typecheck   # tsc --noEmit
 npm run build        # tsc
+npm test             # node:test (compiled to .test-build/)
+npm run package      # out/<id>-<version>.zip
 ```
 
 `@omadia/plugin-api` and `@omadia/orchestrator` are **peer dependencies**,
