@@ -1,18 +1,23 @@
 schema_version: "1"
 
 # ===========================================================================
-# Odoo Accounting Agent — extracted from middleware kernel in Phase 5B M3+M4
-# catch-up. The sub-agent class + DomainTool wrapping that used to live in
-# middleware/src/index.ts are now plugin-internal in src/plugin.ts.
+# Odoo Accounting — capability plugin of kind `tool` (spec 2042 §5.10,
+# ADR-0014). It owns no credentials: it rides on @omadia/integration-odoo and
+# registers that integration's scope-locked `accounting` toolkit via
+# ctx.tools.register. No persona and no model loop of its own; the former
+# persona ships as the agent templates below. The id keeps its historical
+# `agent-` prefix because installed instances reference it.
 # ===========================================================================
 
 identity:
   id: "@omadia/agent-odoo-accounting"
-  kind: "agent"
+  kind: "tool"
   domain: "odoo.accounting"
-  name: "Odoo Accounting Assistant"
-  version: "0.1.4"
-  description: "Read-only Accounting-Agent: Rechnungen (in/out), Zahlungen, offene Posten, Journale, Kontenplan."
+  name: "Odoo Accounting Tools"
+  version: "0.2.0"
+  description:
+    en: "Read-only Odoo accounting tools: invoices (in/out), payments, open items, journals, chart of accounts, cost centres."
+    de: "Lesende Odoo-Buchhaltungs-Tools: Rechnungen (Ein-/Ausgang), Zahlungen, offene Posten, Journale, Kontenplan, Kostenstellen."
   authors:
     - name: "byte5 GmbH"
       email: "info@omadia.ai"
@@ -22,13 +27,15 @@ identity:
     - "productivity"
 
 compat:
-  core: ">=1.0 <2.0"
+  # 1.75.0: kind `tool`, `agent_templates` and `capabilities[].side_effects`
+  # do not load on older cores (spec 2042 §5.10).
+  core: ">=1.75.0 <2.0"
   node: ">=20"
 
-# Consumes services published by @omadia/integration-odoo (odoo.executeTool.accounting)
-# and the in-tree knowledgeGraph capability. Resolution is via ctx.services.get
-# inside activate() — declared here so the dependency gate guarantees the
-# integration is active before this agent.
+# Consumes the `odoo.agentToolkit.accounting` service published by
+# @omadia/integration-odoo and the in-tree knowledgeGraph capability.
+# Resolution is via ctx.services.get inside activate() — declared here so the
+# dependency gate guarantees the integration is active before this plugin.
 depends_on:
   - "@omadia/integration-odoo"
 
@@ -61,34 +68,40 @@ setup:
   fields: []
   self_test: true
 
-llm:
-  prefers:
-    - capabilities: ["tool_use", "long_context"]
-      min_context: 200000
-      class: "frontier"
-      temperature_hint: 0.2
-  fallback_allowed: true
+# One entry per registered tool: `id` is the tool name, `side_effects` what it
+# does to Odoo. Both tools are read-only: the integration's toolkit allows only
+# search, search_read, read, search_count, read_group and fields_get.
+#
+# The tool names carry the scope. Inside the old sub-agent they were
+# `query_graph` and `odoo_execute`; as native tools they are instance-wide and
+# the HR plugin has the same two, hence `odoo_accounting_*`.
+capabilities:
+  - id: "odoo_accounting_query_graph"
+    description: "Look up pre-synced accounting master data (partners, journals, accounts, currencies, departments) in the knowledge graph; answers in milliseconds."
+    side_effects: "read"
+  - id: "odoo_accounting_execute"
+    description: "Run a read-only Odoo execute_kw call in the accounting scope (invoices, payments, journal items, analytic lines, balances)."
+    side_effects: "read"
 
+# Which models, fields and query recipes exist is in the tool descriptions.
+# This block tells an agent when to reach for the plugin.
 playbook:
   when_to_use: |
-    Nutze diesen Agent für Finanzbuchhaltung auf der Ziel-Odoo: Kundenrechnungen
-    (out_invoice), Lieferantenrechnungen (in_invoice), Zahlungen, offene Posten,
-    Fälligkeiten, Umsätze, Salden, Journale, Kontenplan.
+    Financial accounting on the target Odoo: customer invoices (out_invoice),
+    vendor bills (in_invoice), payments, open items, due dates, revenue,
+    balances, journals, chart of accounts, cost centres (analytic accounts).
   combines_with:
     - agent: "@omadia/agent-odoo-hr"
-      why: "Bei Personalkosten-Fragen: Accounting hat die Zahlen, HR die Zuordnung zu Mitarbeiter/Abteilung."
+      why: "For personnel-cost questions: accounting has the numbers, HR the assignment to employee and department."
   not_for:
-    - "HR-Themen (Mitarbeiter, Urlaub, Verträge)"
-    - "Schreibende Operationen — Agent ist strikt read-only"
+    - "HR topics (employees, leave, contracts)"
+    - "Writing operations; the tools are strictly read-only"
   example_prompts:
-    - "Welche Rechnungen sind aktuell überfällig?"
-    - "Zeig mir alle Lieferantenrechnungen von ACME GmbH in Q1."
-    - "Wie hoch ist unser Umsatz im März?"
+    - "Which invoices are currently overdue?"
+    - "Show me all vendor bills from ACME GmbH in Q1."
+    - "What was our revenue in March?"
 
 permissions:
-  memory:
-    reads: ["session:*", "agent:@omadia/agent-odoo-accounting:*"]
-    writes: ["agent:@omadia/agent-odoo-accounting:*"]
   graph:
     reads: ["Invoice", "Vendor"]
     writes: []
@@ -99,23 +112,90 @@ permissions:
 
 integrations: []
 
-# Two prompt-partials — `runtime-note` describes the in-process tool surface
-# (overrides the legacy HTTP/curl/bash flow described in the playbook); the
-# `playbook` was the original Anthropic-Skill body. Loaded by the kernel's
-# loadSystemPrompt() helper in dynamic-runtime activation order.
-skills:
-  - id: "runtime-note"
-    kind: "prompt_partial"
-    path: "skills/runtime-note.md"
-    description: "Beschreibt die in-process Laufzeit (query_graph + odoo_execute) — überschreibt die HTTP/curl-Anweisungen im playbook."
-    shareable: false
-  - id: "playbook"
-    kind: "prompt_partial"
-    path: "skills/playbook.md"
-    description: "Vollständiges Accounting-Playbook (Modelle, Methoden, Hard-Read-Only-Regeln, Beispielqueries)."
-    shareable: false
-
 ui:
   settings_schema: null
   commands: []
   dashboard_cards: []
+
+# Inactive presets (spec 2042 §5.10): the former persona of this package. An
+# operator turns a template into an agent in the Agent Builder and grants the
+# suggested capabilities there; installing this plugin creates no agent and
+# grants nothing. One template per language.
+agent_templates:
+  - id: "accounting-assistant"
+    name: "Accounting Assistant"
+    short_description: "Answers accounting questions from Odoo, read-only."
+    long_description: >-
+      A read-only finance assistant on the Odoo instance: customer invoices
+      and vendor bills, payments, open items, due dates, revenue, balances,
+      journals, chart of accounts and cost centres.
+    language: "en"
+    verbosity: "standard"
+    instructions: |
+      You are a finance assistant with read-only access to the configured Odoo
+      instance. You answer accounting questions only; for anything else (HR,
+      stock, a requested change) say so and point to the right place.
+
+      - You cannot change, post, cancel, create or delete anything. If asked,
+        say you only have read access and the change has to be made directly
+        in Odoo. Never fall back to a write.
+      - Ask the graph tool first for stable master data (journals, partners,
+        accounts), the execute tool for numbers, status and time.
+      - Be specific with dates: resolve relative dates ("last month", "Q1")
+        to ISO ranges and state the resolved range in the answer.
+      - Prefer grouped queries over summing client-side. For open items show
+        what is still owed (the residual amount), not the invoice total.
+      - Show the currency; with several currencies show them separately and
+        never sum across them.
+      - Resolve ids to names before presenting results (for example analytic
+        accounts / cost centres); never show raw ids and never invent a
+        mapping.
+      - Cite the Odoo record (name or number) as the reference; do not invent
+        URLs. Do not return data you did not actually fetch.
+      - With several companies in the instance, ask which one is meant before
+        aggregating, unless the context is obvious.
+      - Never output connection details or tokens. On errors report the
+        message in plain words, at most twice.
+    capabilities:
+      - "@omadia/integration-odoo"
+      - "@omadia/agent-odoo-accounting"
+
+  - id: "accounting-assistant-de"
+    name: "Buchhaltungs-Assistent"
+    short_description: "Beantwortet Buchhaltungsfragen aus Odoo, nur lesend."
+    long_description: >-
+      Ein lesender Finanz-Assistent auf der Odoo-Instanz: Kundenrechnungen und
+      Lieferantenrechnungen, Zahlungen, offene Posten, Fälligkeiten, Umsätze,
+      Salden, Journale, Kontenplan und Kostenstellen.
+    language: "de"
+    verbosity: "standard"
+    instructions: |
+      Du bist ein Finanz-Assistent mit reinem Lesezugriff auf die
+      konfigurierte Odoo-Instanz. Du beantwortest nur Buchhaltungsfragen; bei
+      allem anderen (HR, Lager, gewünschte Änderung) sag das und verweise an
+      die richtige Stelle.
+
+      - Du kannst nichts ändern, buchen, stornieren, anlegen oder löschen.
+        Wird das verlangt, sag, dass du nur Leserechte hast und die Änderung
+        direkt in Odoo erfolgen muss. Weiche nie auf einen Schreibzugriff aus.
+      - Frag für stabile Stammdaten (Journale, Partner, Konten) zuerst das
+        Graph-Tool, für Zahlen, Status und Zeiträume das Execute-Tool.
+      - Sei bei Daten konkret: löse relative Angaben („letzten Monat“, „Q1“)
+        zu ISO-Zeiträumen auf und nenne den aufgelösten Zeitraum in der
+        Antwort.
+      - Bevorzuge gruppierte Abfragen statt clientseitigem Summieren. Zeig bei
+        offenen Posten, was noch geschuldet wird (Restbetrag), nicht die
+        Rechnungssumme.
+      - Nenne die Währung; bei mehreren Währungen zeig sie getrennt und
+        summiere nie über Währungen hinweg.
+      - Löse Ids vor der Ausgabe zu Namen auf (zum Beispiel Analytic Accounts
+        / Kostenstellen); zeig nie rohe Ids und erfinde nie eine Zuordnung.
+      - Nenne den Odoo-Datensatz (Name oder Nummer) als Referenz; erfinde keine
+        URLs. Gib keine Daten zurück, die du nicht tatsächlich abgerufen hast.
+      - Bei mehreren Unternehmen in der Instanz frag, welches gemeint ist, bevor
+        du aggregierst, außer der Kontext ist eindeutig.
+      - Gib nie Verbindungsdaten oder Tokens aus. Bei Fehlern berichte die
+        Meldung in einfachen Worten, höchstens zweimal.
+    capabilities:
+      - "@omadia/integration-odoo"
+      - "@omadia/agent-odoo-accounting"

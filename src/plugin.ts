@@ -1,22 +1,22 @@
 /**
- * Odoo Accounting Sub-Agent — thin consumer.
+ * Odoo Accounting capability plugin (kind `tool`, spec 2042 §5.10, ADR-0014).
  *
- * Phase 6: the LocalSubAgent toolkit (`query_graph` + `odoo_execute`) is now
+ * The toolkit (`query_graph` + `odoo_execute`, scope `accounting`) is
  * assembled once in @omadia/integration-odoo and published as the
- * `odoo.agentToolkit.accounting` service. This plugin just consumes it — the
- * previous graph-lookup wiring (and the @omadia/verifier dependency it needed)
- * moved into the integration, collapsing the boilerplate that this package and
- * @omadia/agent-odoo-hr used to duplicate.
- *
- * The runtime systemPrompt still comes from this package's manifest `skills`
- * (loadSystemPrompt concatenates `runtime-note.md` + `playbook.md`); the
- * dynamic-runtime wraps the returned toolkit into a LocalSubAgent + DomainTool.
+ * `odoo.agentToolkit.accounting` service. This plugin registers each of its
+ * tools via `ctx.tools.register` (`registerTools.ts`) under an
+ * instance-unique name and returns `{ close }`. It has no persona, no system
+ * prompt and no sub-agent: the former persona ships as agent templates in
+ * manifest.yaml, the tool knowledge is in the tool descriptions
+ * (`toolDocs.ts`).
  *
  * Requires @omadia/integration-odoo >= 0.2.0 (publishes odoo.agentToolkit.*).
  */
 
-import type { PluginContext } from '@omadia/plugin-api';
-import type { LocalSubAgentTool } from '@omadia/plugin-api';
+import type { LocalSubAgentTool, PluginContext } from '@omadia/plugin-api';
+
+import { registerToolkitTools } from './registerTools.js';
+import { ACCOUNTING_TOOL_DOCS, ACCOUNTING_TOOL_RENAME } from './toolDocs.js';
 
 const AGENT_TOOLKIT_SERVICE = 'odoo.agentToolkit.accounting';
 
@@ -26,12 +26,11 @@ interface OdooAgentToolkit {
 }
 
 export interface AccountingHandle {
-  readonly toolkit: { tools: LocalSubAgentTool[] };
   close(): Promise<void>;
 }
 
 export async function activate(ctx: PluginContext): Promise<AccountingHandle> {
-  ctx.log('activating odoo-accounting agent');
+  ctx.log('activating odoo-accounting tools');
 
   const toolkit = ctx.services.get<OdooAgentToolkit>(AGENT_TOOLKIT_SERVICE);
   if (!toolkit) {
@@ -40,6 +39,12 @@ export async function activate(ctx: PluginContext): Promise<AccountingHandle> {
     );
   }
 
+  // Every toolkit tool goes to the kernel's tool runtime.
+  const disposeTools = registerToolkitTools(ctx, toolkit.tools, {
+    rename: ACCOUNTING_TOOL_RENAME,
+    docs: ACCOUNTING_TOOL_DOCS,
+  });
+
   ctx.log(
     `odoo-accounting ready (tools=${String(toolkit.tools.length)}: ${toolkit.tools
       .map((t) => t.spec.name)
@@ -47,9 +52,9 @@ export async function activate(ctx: PluginContext): Promise<AccountingHandle> {
   );
 
   return {
-    toolkit: { tools: toolkit.tools },
     async close() {
-      ctx.log('deactivating odoo-accounting agent');
+      ctx.log('deactivating odoo-accounting tools');
+      disposeTools();
     },
   };
 }
